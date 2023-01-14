@@ -6,7 +6,8 @@ import json
 from sklearn.neural_network import MLPRegressor
 from sklearn.model_selection import train_test_split
 import pickle
-from sklearn.metrics import mean_absolute_error
+import math
+from sklearn.metrics import mean_absolute_error, mean_squared_error
 
 # TODO: modify to include check and end game states
 def material_balance(board):
@@ -68,15 +69,21 @@ def generate_game(engine, moves="engine"):
         scores.append(material_balance(board))
 
         if moves=="engine":
-            result = engine.play(board, chess.engine.Limit(depth=10))
+            result = engine.play(board, chess.engine.Limit(depth=random.randint(1,20)))
             encodings.append(board_rep + move_representation(result.move))
             board.push(result.move)
         elif moves=="random":
             random_move = random.choice(list(board.generate_legal_moves()))
             encodings.append(board_rep + move_representation(random_move))
             board.push(random_move)
-        else:
-            assert False
+        elif moves=="mixed":
+            if random.randint(0,2)>1:
+                result = engine.play(board, chess.engine.Limit(depth=random.randint(1,20)))
+                move = result.move
+            else:
+                move = random.choice(list(board.generate_legal_moves()))
+            encodings.append(board_rep + move_representation(move))
+            board.push(move)
         # print(board)
         # print("")
 
@@ -138,8 +145,41 @@ def get_model_move(board):
     predicted_moves = sorted(zip(possible_moves, list(map(lambda x:model.predict([board_representation(board) + move_representation(x)])[0],possible_moves))),key=lambda tup: tup[1])
     best_move = predicted_moves[-1][0]
     best_score = predicted_moves[-1][1]
-    print(best_move,best_score)
+    print(best_move, best_score, material_balance(board))
     return best_move, predicted_moves
+
+def create_train_dataset(num_games=100, depth_offset=10):
+    """Simultaneously create and train neural network to more 
+    advantageously use memory consumption
+    """
+    engine = chess.engine.SimpleEngine.popen_uci(r"/usr/games/stockfish")
+    regr = MLPRegressor(hidden_layer_sizes = (400, 100), random_state=1)
+
+    # regr.predict(X_test[:2])
+    
+    for i in range(0,int(num_games*0.7)):
+        print(i)
+        es, ss = generate_game(engine)
+        encodings = es
+        scores = shift_scores(ss, depth_offset)
+        regr = regr.partial_fit(encodings, scores)
+
+        if i % 100 == 0:
+            pickle.dump(regr, open('model.pkl', 'wb'))
+
+    
+    X_test, y_test =  generate_dataset(int(num_games*0.3),10)
+    print(regr.score(X_test, y_test))
+    
+    pickle.dump(regr, open('model.pkl', 'wb'))
+
+    engine.quit()
+
+    
+
+    return regr
+
+
 
 
 def play_nn_stockfish():
@@ -147,43 +187,42 @@ def play_nn_stockfish():
     engine = chess.engine.SimpleEngine.popen_uci(r"/usr/games/stockfish")
 
     board = chess.Board()
+    
+    count = 0
     while not board.is_game_over():        
         nn_move, all_moves = get_model_move(board)
         
         print(board)
         print("")
 
-        f = open("view.svg","w")
-        f.write(chess.svg.board(board, arrows=list(map(lambda x:chess.svg.Arrow(x[0].from_square, x[0].to_square, color="#0000cc"+["66","77","88","99","aa","bb","cc","dd","ee","ff"][round(x[1]/100*10)]),filter(lambda x:x[1]>0.8,all_moves))), size=350) )
+        f = open(f"./output/view{count}.svg","w")
+        f.write(chess.svg.board(board, arrows=list(map(lambda x:chess.svg.Arrow(x[0].from_square, x[0].to_square, color="#0000cc"+["66","77","88","99","aa","bb","cc","dd","ee","ff"][round(x[1]/100*10)]),filter(lambda x:x[1]>0,all_moves)))+list(map(lambda x:chess.svg.Arrow(x[0].from_square, x[0].to_square, color="#cc0000"+["66","77","88","99","aa","bb","cc","dd","ee","ff"][round(x[1]/100*10)]),filter(lambda x:x[1]<0,all_moves))), size=350) )
         f.close()
+        count = count + 1
 
 
         board.push(nn_move)
 
-
         stockfish_result = engine.play(board, chess.engine.Limit(depth=10))
         board.push(stockfish_result.move)
         
-
-        import ipdb
-        ipdb.set_trace()
-    print(board.turn)
     engine.quit()
 
 # create_dataset()
 
-f = open("dataset_x_1000.json")
-dataset_x = json.load(f)
-f.close()
-f = open("dataset_y_1000.json")
-dataset_y = json.load(f)
-f.close()
-# model = train_model(dataset_x,dataset_y)
-model = load_model("model_1000.pkl")
-print(mean_absolute_error(dataset_y,model.predict(dataset_x)
-))
-import ipdb
-ipdb.set_trace()
+# f = open("dataset_x_1000.json")
+# dataset_x = json.load(f)
+# f.close()
+# f = open("dataset_y_1000.json")
+# dataset_y = json.load(f)
+# f.close()
+
+# # model = train_model(dataset_x,dataset_y)
+# model = load_model("model_1000.pkl")
+#print(math.sqrt(mean_squared_error(dataset_y,model.predict(dataset_x))))
+
+
+model = create_train_dataset()
 
 play_nn_stockfish()
 
