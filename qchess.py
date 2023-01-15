@@ -150,7 +150,7 @@ def train_model(model=MLPRegressor(hidden_layer_sizes = (800, 400, 800), random_
 
     print("Begin Training")
     for i in range(0, num_games):
-        # try:
+        try:
             # print(i)
             es, ss = generate_game(engine, moves=mode)
             encodings = es
@@ -201,7 +201,7 @@ def train_model(model=MLPRegressor(hidden_layer_sizes = (800, 400, 800), random_
 
 
         
-        # except:
+        except:
             print()
         
     engine.quit()
