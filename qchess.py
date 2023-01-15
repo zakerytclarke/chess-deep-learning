@@ -12,7 +12,6 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-PATH = '/dbfs/FileStore/zak/'
 
 METRICS = pd.DataFrame({
     'iteration':[],
@@ -78,8 +77,11 @@ def generate_game(engine, moves="random"):
     while not board.is_game_over():
         board_rep = board_representation(board)
         scores.append(material_balance(board))
-
         if moves=="engine":
+            result = engine.play(board, chess.engine.Limit(depth=5))
+            encodings.append(board_rep + move_representation(result.move))
+            board.push(result.move)
+        if moves=="enginerandom":
             result = engine.play(board, chess.engine.Limit(depth=random.randint(1,20)))
             encodings.append(board_rep + move_representation(result.move))
             board.push(result.move)
@@ -102,14 +104,14 @@ def generate_game(engine, moves="random"):
     return encodings, scores
 
 
-def generate_dataset(num_games, depth_offset):
+def generate_dataset(num_games, depth_offset, moves="engine"):
     encodings = []
     scores = []
     
     engine = chess.engine.SimpleEngine.popen_uci(r"/usr/games/stockfish")
 
     for i in range(0,num_games):
-        es, ss = generate_game(engine)
+        es, ss = generate_game(engine,moves=moves)
         encodings.extend(es)
         scores.extend(shift_scores(ss, depth_offset))
 
@@ -133,7 +135,7 @@ def get_model_move(model, board):
     return best_move, predicted_moves
 
 
-def train_model(model=MLPRegressor(hidden_layer_sizes = (800, 400, 800), random_state=1), num_games=100, depth_offset=1, evaluate_every=10):
+def train_model(model=MLPRegressor(hidden_layer_sizes = (800, 400, 800), random_state=1), num_games=100, depth=1, evaluate_every=10, mode="random",path=""):
     """Simultaneously create and train neural network to more 
     advantageously use memory consumption
     """
@@ -142,22 +144,22 @@ def train_model(model=MLPRegressor(hidden_layer_sizes = (800, 400, 800), random_
     print("Chess Q-Learning")
     print("=========================")
     print("Creating Evaluation Dataset")
-    X_test, y_test =  generate_dataset(10, depth_offset)
+    X_test, y_test =  generate_dataset(10, depth, moves="engine")
     
     global METRICS
 
     print("Begin Training")
     for i in range(0, num_games):
-        try:
+        # try:
             # print(i)
-            es, ss = generate_game(engine)
+            es, ss = generate_game(engine, moves=mode)
             encodings = es
-            scores = shift_scores(ss, depth_offset)
+            scores = shift_scores(ss, depth)
             model = model.partial_fit(encodings, scores)
 
             if i % evaluate_every == 0:
                 print("=========================")
-                pickle.dump(model, open(PATH+'chess.pkl', 'wb'))
+                pickle.dump(model, open(path+'mode.pkl', 'wb'))
                 game_material = play_nn_stockfish(model)
                 print(f"Update: {i} game iterations")
                 cde = model.score(X_test, y_test)
@@ -171,7 +173,7 @@ def train_model(model=MLPRegressor(hidden_layer_sizes = (800, 400, 800), random_
                     'rmses':[rmse],
                     'cdes':[cde]
                 }), ignore_index = True)
-                METRICS.to_csv(PATH+"metrics.csv")
+                METRICS.to_csv(path+"metrics.csv")
                 fig = make_subplots(specs=[[{"secondary_y": True}]])
 
                 # Add traces
@@ -195,16 +197,16 @@ def train_model(model=MLPRegressor(hidden_layer_sizes = (800, 400, 800), random_
 
                 # Set y-axes titles
                 
-                fig.write_image(PATH+"error.png")
+                fig.write_image(path+"stats.png")
 
 
         
-        except:
+        # except:
             print()
         
     engine.quit()
     
-    return regr
+    return model
 
 
 
