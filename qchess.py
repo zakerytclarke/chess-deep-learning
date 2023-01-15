@@ -149,7 +149,7 @@ def train_model(model=MLPRegressor(hidden_layer_sizes = (800, 400, 800), random_
     print("Begin Training")
     for i in range(0, num_games):
         try:
-            print(i)
+            # print(i)
             es, ss = generate_game(engine)
             encodings = es
             scores = shift_scores(ss, depth_offset)
@@ -195,7 +195,7 @@ def train_model(model=MLPRegressor(hidden_layer_sizes = (800, 400, 800), random_
 
                 # Set y-axes titles
                 
-                fig.write_image("error.png")
+                fig.write_image(PATH+"error.png")
 
 
         
