@@ -195,7 +195,7 @@ def train_model(model=MLPRegressor(hidden_layer_sizes = (800, 400, 800), random_
 
                 # Set y-axes titles
                 
-                fig.show()
+                fig.write_image("error.png")
 
 
         
